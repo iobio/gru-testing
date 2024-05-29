@@ -1,0 +1,149 @@
+#!/usr/bin/env python3
+
+from urllib import request
+import json
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+server = 'https://backend.iobio.io'
+#server = 'http://localhost:9001'
+
+def iobio_request(endpoint, params):
+    json_body = json.dumps(params)
+    json_body_bytes = json_body.encode('utf-8')
+
+    req = request.Request('{}{}'.format(server, endpoint), method='POST', headers={
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Content-Length': len(json_body_bytes),
+    })
+
+    res = request.urlopen(req, data=json_body_bytes)
+
+    data = res.read().decode('utf-8')
+
+    return data
+
+
+def test_variant_header():
+    params = {
+        'url': "https://s3.amazonaws.com/iobio/samples/vcf/platinum-exome.vcf.gz",
+        'indexUrl': "https://s3.amazonaws.com/iobio/samples/vcf/platinum-exome.vcf.gz.tbi",
+    }
+
+    data = iobio_request('/variantHeader', params)
+
+    if "##fileDate=20160903" not in data:
+        raise ValueError("test_variant_header failed")
+
+def test_get_chromosomes():
+    params = {
+        'url': "https://iobio.s3.amazonaws.com/samples/vcf/2021_platinum/2021_platinum_exomes_GRCh38.vcf.gz",
+        'indexUrl': "https://iobio.s3.amazonaws.com/samples/vcf/2021_platinum/2021_platinum_exomes_GRCh38.vcf.gz.tbi"
+
+    }
+
+    data = iobio_request('/getChromosomes', params)
+
+    if "chr1" not in data:
+        raise ValueError("test_get_chromosomes failed")
+
+def test_alignment_header():
+    params = {
+        'url': "https://iobio.s3.amazonaws.com/samples/cram/2021_platinum/GRCh38_exomes/NA12878.cram",
+    }
+
+    data = iobio_request('/alignmentHeader', params)
+
+    if "@HD	VN:1.5	SO:coordinate" not in data:
+        raise ValueError("test_alignment_header failed")
+
+def test_annotate_variants_v2():
+    params = json.loads('{"_requestId":"04l4-ep73","_appendErrors":true,"_attemptNum":1,"vcfUrl":"https://iobio.s3.amazonaws.com/samples/vcf/2021_platinum/2021_platinum_exomes_GRCh38.vcf.gz","tbiUrl":"https://iobio.s3.amazonaws.com/samples/vcf/2021_platinum/2021_platinum_exomes_GRCh38.vcf.gz.tbi","refNames":["chr1","chr2","chr3","chr4","chr5","chr6","chr7","chr8","chr9","chr10","chr11","chr12","chr13","chr14","chr15","chr16","chr17","chr18","chr20","chr21","chr22","chrX","chrY"],"regions":[{"name":"chrX","start":19342893,"end":19362718}],"vcfSampleNames":["NA12878","NA12892","NA12891"],"refFastaFile":"./data/references/homo_sapiens/hg38/chrX.fa","genomeBuildName":"GRCh38","isRefSeq":false,"hgvsNotation":false,"getRsId":false,"vepAF":true,"sfariMode":false,"vepREVELFile":"./vep-cache/GRCh38_revel_all_chromosomes_for_vep.tsv.gz","gnomadMergeAnnots":true,"decompose":true,"bypassAnnotate":false}')
+
+    data = iobio_request('/annotateVariantsV2', params)
+
+    if "chrX	19351353	.	G	T	105.1	PASS" not in data:
+        raise ValueError("test_annotate_variants_v2 failed")
+
+def test_gene_coverage():
+    params = json.loads('{"_requestId":"ykmk-02fj","_appendErrors":true,"_attemptNum":1,"url":"https://iobio.s3.amazonaws.com/samples/cram/2021_platinum/GRCh38_exomes/NA12878.cram","indexUrl":"https://iobio.s3.amazonaws.com/samples/cram/2021_platinum/GRCh38_exomes/NA12878.cram.crai","refName":"chrX","geneName":"PDHA1","regionStart":19342893,"regionEnd":19362718,"regions":[{"start":19344038,"end":19344094},{"start":19349312,"end":19349371},{"start":19349937,"end":19350110},{"start":19351281,"end":19351407},{"start":19353082,"end":19353173},{"start":19354491,"end":19354583},{"start":19355349,"end":19355504},{"start":19355686,"end":19355757},{"start":19357652,"end":19357719},{"start":19358916,"end":19359024},{"start":19359489,"end":19359653}]}')
+
+    data = iobio_request('/geneCoverage', params)
+
+    if "PDHA1	NA	36	103	46	52	58	55.0622	13.0772" not in data:
+        raise ValueError("test_gene_coverage failed")
+
+def test_alignment_coverage():
+    params = json.loads('{"_requestId":"2mwf-iyen","_appendErrors":true,"_attemptNum":1,"url":"https://iobio.s3.amazonaws.com/samples/cram/2021_platinum/GRCh38_exomes/NA12878.cram","indexUrl":"https://iobio.s3.amazonaws.com/samples/cram/2021_platinum/GRCh38_exomes/NA12878.cram.crai","samtoolsRegion":{"refName":"chr17","start":17680458,"end":17812453},"maxPoints":2000,"coverageRegions":[{"name":"17","start":17794939,"end":17794940},{"name":"17","start":17795220,"end":17795221},{"name":"17","start":17796722,"end":17796723},{"name":"17","start":17803790,"end":17803791}]}')
+
+    data = iobio_request('/alignmentCoverage', params)
+
+    if "17794940	33" not in data:
+        raise ValueError("test_alignment_coverage failed")
+
+def test_normalize_variants():
+    # Original JSON string
+    original_json_string = '{"_requestId":"4gn7-kt1b","_appendErrors":true,"_attemptNum":1,"vcfUrl":"https://backend.iobio.io/static/clinvar/GRCh38/clinvar.vcf.gz","tbiUrl":null,"refName":"X","regions":[{"refName":"X","start":19342893,"end":19362718}],"contigStr":"##contig=<ID=1>\n##contig=<ID=2>\n##contig=<ID=3>\n##contig=<ID=4>\n##contig=<ID=5>\n##contig=<ID=6>\n##contig=<ID=7>\n##contig=<ID=8>\n##contig=<ID=9>\n##contig=<ID=10>\n##contig=<ID=11>\n##contig=<ID=12>\n##contig=<ID=13>\n##contig=<ID=14>\n##contig=<ID=15>\n##contig=<ID=16>\n##contig=<ID=17>\n##contig=<ID=18>\n##contig=<ID=19>\n##contig=<ID=20>\n##contig=<ID=21>\n##contig=<ID=22>\n##contig=<ID=X>\n##contig=<ID=Y>\n","refFastaFile":"./data/references/homo_sapiens/GRCh38/Homo_sapiens.GRCh38.dna.chromosome.X.fa","vcfSampleNames":"","decompose":false}'
+
+    # Sanitize the JSON string
+    sanitized_json_string = sanitize_json_string(original_json_string)
+
+    params = json.loads(sanitized_json_string)
+    data = iobio_request('/normalizeVariants', params)
+
+    if "X	19351318	2052118	CCACAGACCATCTCAT	C	.	." not in data:
+        raise ValueError("test_normalize_variants failed")
+
+def test_clinvar_counts_for_gene():
+    params = json.loads('{"_requestId":"6tvp-qh2m","_appendErrors":true,"_attemptNum":1,"clinvarUrl":"https://backend.iobio.io/static/clinvar/GRCh38/clinvar.vcf.gz","region":{"refName":"17","start":17680458,"end":17812453},"binLength":null,"regions":[{"start":17681458,"end":17681793},{"start":17724028,"end":17724159},{"start":17792933,"end":17792948},{"start":17792949,"end":17798513},{"start":17803756,"end":17803849},{"start":17809390,"end":17809439},{"start":17809970,"end":17809981},{"start":17809982,"end":17811453}],"annotationMode":"clinvar","requiresVepService":false,"vepArgs":""}')
+
+    data = iobio_request('/clinvarCountsForGene', params)
+
+    if "17681458	17681793	0	0	0	0	0" not in data:
+        raise ValueError("test_clinvar_counts_for_gene failed")
+
+def test_freebayes_joint_call_v2():
+    params = json.loads('{"_requestId":"io4a-pvbp","_appendErrors":true,"_attemptNum":1,"alignmentSources":[{"bamUrl":"https://iobio.s3.amazonaws.com/samples/cram/2021_platinum/GRCh38_exomes/NA12878.cram","baiUrl":"https://iobio.s3.amazonaws.com/samples/cram/2021_platinum/GRCh38_exomes/NA12878.cram.crai"},{"bamUrl":"https://iobio.s3.amazonaws.com/samples/cram/2021_platinum/GRCh38_exomes/NA12892.cram","baiUrl":"https://iobio.s3.amazonaws.com/samples/cram/2021_platinum/GRCh38_exomes/NA12892.cram.crai"},{"bamUrl":"https://iobio.s3.amazonaws.com/samples/cram/2021_platinum/GRCh38_exomes/NA12891.cram","baiUrl":"https://iobio.s3.amazonaws.com/samples/cram/2021_platinum/GRCh38_exomes/NA12891.cram.crai"}],"refFastaFile":"./data/references/homo_sapiens/hg38/chr17.fa","region":{"refName":"chr17","start":17680458,"end":17812453},"fbArgs":{"useSuggestedVariants":{"value":true,"defaultValue":true},"limitToSuggestedVariants":{"value":false,"defaultValue":false,"argName":"-l","isFlag":true},"minMappingQual":{"value":0,"defaultValue":0,"argName":"--min-mapping-quality"},"minCoverage":{"value":0,"defaultValue":0,"argName":"--min-coverage"},"useDupReads":{"value":false,"defaultValue":false,"argName":"--use-duplicate-reads","isFlag":true}},"refNames":["chr1","chr2","chr3","chr4","chr5","chr6","chr7","chr8","chr9","chr10","chr11","chr12","chr13","chr14","chr15","chr16","chr17","chr18","chr20","chr21","chr22","chrX","chrY"],"genomeBuildName":"GRCh38","vepREVELFile":"./vep-cache/GRCh38_revel_all_chromosomes_for_vep.tsv.gz","vepAF":true,"isRefSeq":false,"clinvarUrl":"https://backend.iobio.io/static/clinvar/GRCh38/clinvar.vcf.gz","sampleNames":["NA12878","NA12892","NA12891"],"decompose":true}')
+
+    data = iobio_request('/freebayesJointCallV2', params)
+
+    if "chr17	17792897	.	T	C	0.0	." not in data:
+        raise ValueError("test_freebayes_joint_call_v2 failed")
+
+def test_get_clinvar_variants_v2():
+    params = json.loads('{"_requestId":"jear-nyhi","_appendErrors":true,"_attemptNum":1,"vcfUrl":"https://backend.iobio.io/static/clinvar/GRCh38/clinvar.vcf.gz","tbiUrl":null,"refNames":["1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","20","21","22","X","Y"],"regions":[{"name":"17","start":17679458,"end":17813453}],"refFastaFile":"./data/references/homo_sapiens/GRCh38/Homo_sapiens.GRCh38.dna.chromosome.17.fa","genomeBuildName":"GRCh38","gnomadMergeAnnots":true,"clinSigFilterPhrase":"INFO/CLNSIG=\\"Pathogenic,Likely_pathogenic\\""}')
+    
+    data = iobio_request('/getClinvarVariantsV2', params)
+
+    if "17	17792961	1679394	C	T	.	PASS" not in data:
+        raise ValueError("test_get_clinvar_variants_v2 failed")
+
+def sanitize_json_string(json_string):
+    # Replace unescaped newlines with escaped ones
+    json_string = json_string.replace("\n", "\\n")
+    return json_string
+
+def run_test(test_function):
+    try:
+        test_function()
+        print(f"{test_function.__name__} passed")
+    except Exception as e:
+        print(f"{test_function.__name__} failed: {e}")
+
+
+
+if __name__ == '__main__':
+    tests = [
+        test_variant_header, test_get_chromosomes, test_alignment_header,
+        test_annotate_variants_v2, test_gene_coverage, test_alignment_coverage,
+        test_normalize_variants, test_clinvar_counts_for_gene, test_freebayes_joint_call_v2,
+        test_get_clinvar_variants_v2
+    ]
+
+    with ThreadPoolExecutor(max_workers=len(tests)) as executor:
+        future_to_test = {executor.submit(run_test, test): test for test in tests}
+        for future in as_completed(future_to_test):
+            test = future_to_test[future]
+            try:
+                future.result()
+            except Exception as exc:
+                print(f"{test.__name__} generated an exception: {exc}")
